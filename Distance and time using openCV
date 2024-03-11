@@ -1,0 +1,73 @@
+import cv2
+import numpy as np
+import time
+
+# Function to calculate distance between two points
+def calculate_distance(p1, p2):
+    return np.sqrt((p2[0] - p1[0])*2 + (p2[1] - p1[1])*2)
+
+# Function to convert pixel distance to centimeters
+def pixel_to_cm(pixel_distance, pixel_width, cm_width):
+    return (pixel_distance / pixel_width) * cm_width
+
+cap = cv2.VideoCapture(0)
+
+_, prev = cap.read()
+prev = cv2.flip(prev, 1)
+_, new = cap.read()
+new = cv2.flip(new, 1)
+
+start_time = time.time()  # Start time for calculating time elapsed
+initial_position = (20, 200)  # Initial position for distance calculation
+prev_position = initial_position
+pixel_width = 640  # Width of the camera's field of view in pixels (adjust according to your camera)
+cm_width = 30  # Width of the camera's field of view in centimeters (adjust according to your setup)
+
+while True:
+    diff = cv2.absdiff(prev, new)
+    diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+    diff = cv2.blur(diff, (5,5))
+    _, thresh = cv2.threshold(diff, 10, 255, cv2.THRESH_BINARY)
+    thresh = cv2.dilate(thresh, None, 3)
+    thresh = cv2.erode(thresh, np.ones((4,4)), 1)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.circle(prev, initial_position, 5, (0,0,255), -1)
+    
+    for contour in contours:                
+        if cv2.contourArea(contour) > 30000:
+            (x1,y1), _ = cv2.minEnclosingCircle(contour)
+            x1 = int(x1)
+            y1 = int(y1)
+            cv2.line(prev, prev_position, (x1, y1), (255,0,0), 4)
+            cv2.circle(prev, (x1,y1), 5, (0,0,255), -1)
+            
+            # Calculate distance between consecutive points
+            distance_px = calculate_distance(prev_position, (x1, y1))
+            distance_cm = pixel_to_cm(distance_px, pixel_width, cm_width)
+            
+            # Calculate time taken between consecutive points
+            elapsed_time = time.time() - start_time
+            
+            # Display distance and time
+            cv2.putText(prev, "Distance: {:.2f} cm".format(distance_cm), (20,50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+            cv2.putText(prev, "Time: {:.2f} s".format(elapsed_time), (20,100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+            
+            # Update previous position
+            prev_position = (x1, y1)
+            start_time = time.time()  # Update start time
+    
+    cv2.imshow("orig", prev)
+    
+    prev = new
+    _, new = cap.read()
+    new = cv2.flip(new, 1)
+
+    if cv2.waitKey(1) == 27:
+        break
+
+
+    key = cv2.waitKey(1)
+    if key == ord('q'):  # Press 'q' to quit
+        break
+cap.release()
+cv2.destroyAllWindows()
